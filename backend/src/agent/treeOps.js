@@ -113,6 +113,114 @@ function defaultPropsFor(component, intent) {
   }
 }
 
+function isProjectDashboardIntent(intent) {
+  const text = intent.toLowerCase();
+  return (
+    text.includes("dashboard") &&
+    (text.includes("project") || text.includes("task") || text.includes("kpi"))
+  );
+}
+
+function buildProjectDashboardOperations() {
+  return [
+    {
+      type: "update",
+      target: "navbar",
+      component: "Navbar",
+      props: {
+        title: "Project Management",
+        links: ["Dashboard", "Tasks", "Reports", "Profile"]
+      },
+      position: "replace"
+    },
+    {
+      type: "update",
+      target: "sidebar",
+      component: "Sidebar",
+      props: {
+        title: "Navigation",
+        items: ["Overview", "Projects", "Tasks", "Team", "Settings"]
+      },
+      position: "replace"
+    },
+    {
+      type: "remove",
+      target: "content:last",
+      component: null,
+      props: {},
+      position: "append"
+    },
+    {
+      type: "add",
+      target: "content",
+      component: "Card",
+      props: {
+        title: "Total Projects",
+        body: "24",
+        footer: "Portfolio count"
+      },
+      position: "append"
+    },
+    {
+      type: "add",
+      target: "content",
+      component: "Card",
+      props: {
+        title: "Active Tasks",
+        body: "68",
+        footer: "Currently in progress"
+      },
+      position: "append"
+    },
+    {
+      type: "add",
+      target: "content",
+      component: "Card",
+      props: {
+        title: "Completed Tasks",
+        body: "142",
+        footer: "Delivered this month"
+      },
+      position: "append"
+    },
+    {
+      type: "add",
+      target: "content",
+      component: "Chart",
+      props: {
+        title: "Task Progress",
+        labels: ["Backlog", "In Progress", "Review", "Done"],
+        points: [18, 42, 20, 65]
+      },
+      position: "append"
+    },
+    {
+      type: "add",
+      target: "content",
+      component: "Table",
+      props: {
+        columns: ["Task Name", "Owner", "Status", "Due Date"],
+        rows: [
+          ["User Onboarding", "Ava", "In Progress", "2026-02-18"],
+          ["Billing Migration", "Noah", "Review", "2026-02-21"],
+          ["Release Notes", "Mia", "Completed", "2026-02-10"]
+        ]
+      },
+      position: "append"
+    },
+    {
+      type: "add",
+      target: "content",
+      component: "Button",
+      props: {
+        label: "Create Task",
+        variant: "primary"
+      },
+      position: "append"
+    }
+  ];
+}
+
 export function buildHeuristicPlan({ intent, mode }) {
   const explicitComponents = inferComponentList(intent, { allowFallback: false });
   const components =
@@ -124,6 +232,24 @@ export function buildHeuristicPlan({ intent, mode }) {
   const wantsMinimal = text.includes("minimal") || text.includes("simple") || text.includes("clean");
   const wantsRemove = text.includes("remove") || text.includes("delete");
   const operations = [];
+
+  if (mode === "generate" && isProjectDashboardIntent(intent)) {
+    const dashboardOps = buildProjectDashboardOperations();
+    return {
+      action: "generate",
+      updates: dashboardOps.filter((op) => op.type === "update"),
+      additions: dashboardOps.filter((op) => op.type === "add"),
+      removals: dashboardOps.filter((op) => op.type === "remove"),
+      layout_changes: [],
+      reasoning: "Heuristic planner matched project dashboard template.",
+      title: "Project dashboard generation",
+      operations: dashboardOps,
+      notes: [
+        "Applied deterministic dashboard layout template.",
+        "Kept one navbar and one sidebar, and composed content section only."
+      ]
+    };
+  }
 
   if (wantsRemove) {
     operations.push({
@@ -150,12 +276,13 @@ export function buildHeuristicPlan({ intent, mode }) {
   }
 
   for (const component of components) {
+    const target = component === "Navbar" ? "navbar" : component === "Sidebar" ? "sidebar" : "content";
     operations.push({
       type: "add",
-      target: "content",
+      target,
       component,
       props: defaultPropsFor(component, intent),
-      position: "append"
+      position: target === "content" ? "append" : "replace"
     });
   }
 
@@ -273,11 +400,16 @@ export function applyPlanToTree({ previousTree, plan, mode, intent }) {
       if (idTarget) {
         const located = findNodeById(base, idTarget);
         if (located?.node) {
+          const nextType = componentNode.type;
+          const prevType = located.node.type;
           located.node.type = componentNode.type;
-          located.node.props = {
-            ...(located.node.props || {}),
-            ...(componentNode.props || {})
-          };
+          located.node.props =
+            prevType === nextType
+              ? {
+                  ...(located.node.props || {}),
+                  ...(componentNode.props || {})
+                }
+              : { ...(componentNode.props || {}) };
           continue;
         }
       }
@@ -287,13 +419,18 @@ export function applyPlanToTree({ previousTree, plan, mode, intent }) {
         content.children.push(componentNode);
       } else {
         const idx = target === "content:first" ? 0 : content.children.length - 1;
+        const prevType = content.children[idx].type;
+        const nextType = componentNode.type;
         content.children[idx] = {
           ...content.children[idx],
           type: componentNode.type,
-          props: {
-            ...(content.children[idx].props || {}),
-            ...(componentNode.props || {})
-          }
+          props:
+            prevType === nextType
+              ? {
+                  ...(content.children[idx].props || {}),
+                  ...(componentNode.props || {})
+                }
+              : { ...(componentNode.props || {}) }
         };
       }
     }

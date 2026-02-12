@@ -39,6 +39,8 @@ function buildError(status, message, errors, extra = {}) {
 export async function runAgent({ userMessage, mode, sessionId, apiKey, model }) {
   const guard = runInjectionGuard(userMessage || "");
   const effectiveIntent = (guard.safe_intent_summary || "").trim();
+  const requestedMode =
+    mode === "modify" || mode === "regenerate" || mode === "generate" ? mode : "generate";
 
   if (!guard.is_safe && !effectiveIntent) {
     return buildError(400, guard.violation_reason || "Unsafe intent", [guard.violation_reason], {
@@ -60,6 +62,16 @@ export async function runAgent({ userMessage, mode, sessionId, apiKey, model }) 
     apiKey,
     model
   });
+
+  // User action buttons should be authoritative.
+  if (requestedMode === "modify" || requestedMode === "regenerate") {
+    intentInfo = {
+      ...intentInfo,
+      intentType: "modify",
+      intent_type: "modify",
+      forced_by_mode: requestedMode
+    };
+  }
 
   if (intentInfo.intentType === "rollback") {
     if (!intentInfo.targetVersion) {
@@ -141,13 +153,15 @@ export async function runAgent({ userMessage, mode, sessionId, apiKey, model }) 
   }
 
   const previousLegacyTree = createLegacyFromUITree(previousAst);
+  const plannerMode = requestedMode === "regenerate" ? "generate" : requestedMode;
+  const plannerPreviousTree = requestedMode === "regenerate" ? null : previousLegacyTree;
 
   const planner = await runPlanner({
     intent: effectiveIntent,
-    mode,
+    mode: plannerMode,
     previousPlan: currentVersion?.plan || null,
     previousCode: currentVersion?.code || null,
-    previousTree: previousLegacyTree,
+    previousTree: plannerPreviousTree,
     apiKey,
     model
   });
@@ -155,9 +169,9 @@ export async function runAgent({ userMessage, mode, sessionId, apiKey, model }) 
   const normalized = normalizePlan(planner.plan);
 
   const nextLegacyTree = applyPlanToTree({
-    previousTree: previousLegacyTree,
+    previousTree: plannerPreviousTree,
     plan: normalized.normalizedPlan,
-    mode,
+    mode: plannerMode,
     intent: effectiveIntent
   });
 
@@ -186,7 +200,7 @@ export async function runAgent({ userMessage, mode, sessionId, apiKey, model }) 
 
   const explanation = await runExplainer({
     intent: effectiveIntent,
-    mode,
+    mode: requestedMode,
     plan: normalized.normalizedPlan,
     plannerSource: planner.source,
     previousAst: previousAst.root,
@@ -200,7 +214,7 @@ export async function runAgent({ userMessage, mode, sessionId, apiKey, model }) 
     payload: {
       sessionId: session.id,
       intent: effectiveIntent,
-      mode,
+      mode: requestedMode,
       plannerSource: planner.source,
       plan: normalized.normalizedPlan,
       uiTree: nextLegacyTree,
