@@ -1,0 +1,7 @@
+node_modules
+.DS_Store
+.env
+frontend/dist
+backend/.wrangler
+backend/wrangler-state
+//https://api.openai.com/v1/chat/completions....wrangler secret put OPENAI_API_KEY

@@ -1,0 +1,21 @@
+{
+  "name": "ai-ui-generator-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20 <25",
+    "npm": ">=10 <12"
+  },
+  "scripts": {
+    "dev": "wrangler dev src/index.js --port 8787 --local",
+    "deploy": "wrangler deploy",
+    "start": "wrangler dev src/index.js --port 8787 --local"
+  },
+  "dependencies": {
+    "hono": "^4.7.2"
+  },
+  "devDependencies": {
+    "wrangler": "^3.109.2"
+  }
+}
