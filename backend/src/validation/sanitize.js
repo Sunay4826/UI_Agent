@@ -68,20 +68,24 @@ function matchesRule(sentence, rule) {
 }
 
 function buildSafeIntentSummary(message) {
-  const sentences = message
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  let sanitized = message;
 
-  const safeSentences = sentences.filter((sentence) => {
-    return !SECURITY_RULES.some((rule) => matchesRule(sentence, rule));
-  });
-
-  if (safeSentences.length === 0) {
-    return "";
+  // Remove only unsafe fragments so mixed prompts can still run.
+  for (const rule of SECURITY_RULES) {
+    for (const pattern of rule.patterns) {
+      const globalPattern = new RegExp(pattern.source, "ig");
+      sanitized = sanitized.replace(globalPattern, " ");
+    }
   }
 
-  return normalizeWhitespace(safeSentences.join(" ")).slice(0, 800);
+  // Remove leftover punctuation-only chunks from stripped lines.
+  sanitized = sanitized
+    .split(/\n+/)
+    .map((line) => line.replace(/^[\s:;,.!?\-]+|[\s:;,.!?\-]+$/g, "").trim())
+    .filter((line) => line.length > 0)
+    .join(" ");
+
+  return normalizeWhitespace(sanitized).slice(0, 800);
 }
 
 export function analyzeIntentSecurity(userIntent) {

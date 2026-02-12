@@ -64,6 +64,36 @@ function validateComponentUsage(code, allowedComponents, errors) {
   }
 }
 
+function lightweightSyntaxCheck(code) {
+  const stack = [];
+  const openers = new Set(["(", "{", "["]);
+  const pairs = { ")": "(", "}": "{", "]": "[" };
+
+  for (let i = 0; i < code.length; i += 1) {
+    const ch = code[i];
+    if (openers.has(ch)) {
+      stack.push(ch);
+      continue;
+    }
+    if (pairs[ch]) {
+      const last = stack.pop();
+      if (last !== pairs[ch]) {
+        return { ok: false, reason: "Unbalanced brackets in generated code." };
+      }
+    }
+  }
+
+  if (stack.length > 0) {
+    return { ok: false, reason: "Unbalanced brackets in generated code." };
+  }
+
+  if (!/return\s*\(/.test(code) && !/return\s+React\.createElement/.test(code)) {
+    return { ok: false, reason: "Missing return statement in renderGeneratedUI." };
+  }
+
+  return { ok: true, reason: "" };
+}
+
 export function validateGeneratedCode(code, allowedComponents = ALLOWED_COMPONENTS) {
   const errors = [];
 
@@ -104,10 +134,19 @@ export function validateGeneratedCode(code, allowedComponents = ALLOWED_COMPONEN
   validateComponentUsage(code, allowedComponents, errors);
 
   try {
-    // Syntax-only check
+    // Syntax-only check (works in Node/browser runtimes).
     new Function(`"use strict";\n${code}\nreturn typeof renderGeneratedUI === 'function';`);
   } catch (error) {
-    push(errors, `Syntax validation failed: ${error.message}`);
+    const message = String(error?.message || "");
+    // Cloudflare Workers disallow string-code execution; run a deterministic lightweight check instead.
+    if (/code generation from strings disallowed/i.test(message)) {
+      const fallback = lightweightSyntaxCheck(code);
+      if (!fallback.ok) {
+        push(errors, `Syntax validation failed: ${fallback.reason}`);
+      }
+    } else {
+      push(errors, `Syntax validation failed: ${message}`);
+    }
   }
 
   return {
