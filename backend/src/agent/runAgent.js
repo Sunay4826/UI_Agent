@@ -36,7 +36,7 @@ function buildError(status, message, errors, extra = {}) {
   };
 }
 
-export async function runAgent({ userMessage, mode, sessionId, apiKey, model, provider = "openai", llmOnly = false }) {
+export async function runAgent({ userMessage, mode, sessionId, apiKey, model, llmOnly = false }) {
   const guard = runInjectionGuard(userMessage || "");
   const effectiveIntent = (guard.safe_intent_summary || "").trim();
   const requestedMode =
@@ -60,8 +60,7 @@ export async function runAgent({ userMessage, mode, sessionId, apiKey, model, pr
     currentAst: previousAst,
     currentVersionId: currentVersion?.id || "",
     apiKey,
-    model,
-    provider
+    model
   });
 
   // User action buttons should be authoritative.
@@ -160,8 +159,7 @@ export async function runAgent({ userMessage, mode, sessionId, apiKey, model, pr
   const enforceLlm = Boolean(llmOnly) || hasApiKey;
 
   if (enforceLlm && !hasApiKey) {
-    const requiredKeyName = String(provider || "openai").toLowerCase() === "gemini" ? "GEMINI_API_KEY" : "OPENAI_API_KEY";
-    return buildError(500, "LLM configuration missing.", [`${requiredKeyName} is required in LLM-only mode.`], {
+    return buildError(500, "LLM configuration missing.", ["GEMINI_API_KEY is required in LLM-only mode."], {
       version_intent: intentInfo,
       llm_required: true
     });
@@ -177,7 +175,6 @@ export async function runAgent({ userMessage, mode, sessionId, apiKey, model, pr
       previousTree: plannerPreviousTree,
       apiKey,
       model,
-      provider,
       enforceLlm
     });
   } catch (error) {
@@ -228,8 +225,7 @@ export async function runAgent({ userMessage, mode, sessionId, apiKey, model, pr
     previousAst: previousAst.root,
     generatedAst: nextAst.root,
     apiKey,
-    model,
-    provider
+    model
   });
 
   const savedVersion = saveVersion({

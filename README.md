@@ -1,27 +1,84 @@
-# Deterministic AI UI Generator (React + Hono on Cloudflare Workers)
+# AI Deterministic UI Generator
 
-This project implements a Claude-Code-style UI generator with deterministic rendering constraints.
+Claude-Code-style deterministic UI generation with React frontend and Hono backend on Cloudflare Workers.
 
-## What It Does
+## Overview
 
-- Accepts natural-language UI intent.
-- Runs a full orchestration pipeline:
-  1. Injection Guard
-  2. Intent Classifier (`modify | rollback | compare`)
-  3. Planner (AST modification plan)
-  4. Deterministic Normalizer
-  5. Generator (React code)
-  6. Prop Validator
-  7. Code Validator
-  8. Explainer
-- Produces editable generated React code.
-- Shows live preview using a fixed component library.
-- Supports iterative modify/regenerate flows.
-- Stores version history and supports rollback.
+This app converts natural-language UI intent into deterministic UI code and live preview while enforcing a fixed component system. It supports iterative modifications, explainability, validation, and version rollback.
 
-## Deterministic Component System
+## Architecture Overview
 
-Whitelisted components only:
+High-level orchestration flow:
+
+```text
+User Intent
+  -> [1] Injection Guard
+  -> [2] Intent Classifier (modify | rollback | compare)
+  -> [3] Planner
+  -> [4] Deterministic Normalizer
+  -> [5] Generator (React function)
+  -> [6] Prop Validator
+  -> [7] Code Validator
+  -> [8] Explainer
+  -> Render + Store Version
+```
+
+### Frontend (`/frontend`)
+
+- React + Vite
+- Route-based interface:
+  - `/chat`
+  - `/code`
+  - `/preview`
+  - `/history`
+  - `/agent`
+- Claude-style split workflow:
+  - intent input/chat
+  - editable generated code
+  - live preview
+- Version list + rollback actions
+
+### Backend (`/backend`)
+
+- Hono on Cloudflare Workers
+- `runAgent(...)` orchestration entrypoint
+- Deterministic plan normalization before application
+- Strict schema and code validation before render/save
+- In-memory version/session store
+
+## Agent Design & Prompts
+
+Prompt templates are centralized in:
+
+- `backend/src/agent/prompts.js`
+
+Agent step modules:
+
+- `backend/src/agent/injectionGuard.js`
+- `backend/src/agent/intentClassifier.js`
+- `backend/src/agent/versionIntentPlanner.js`
+- `backend/src/agent/planner.js`
+- `backend/src/agent/normalizer.js`
+- `backend/src/agent/generator.js`
+- `backend/src/agent/explainer.js`
+- `backend/src/agent/runAgent.js`
+
+Implemented prompt categories include:
+
+- Incremental planner prompt
+- Rollback-aware intent planner prompt
+- Prompt-injection defense prompt
+- Deterministic normalizer prompt
+- Generator prompt
+- Explainer prompt
+- Edit-awareness explainer prompt
+- Prop schema validation prompt
+- Code validation prompt
+- Validation feedback prompt
+
+## Deterministic Component System Design
+
+Allowed leaf components:
 
 - `Button`
 - `Card`
@@ -32,232 +89,181 @@ Whitelisted components only:
 - `Navbar`
 - `Chart`
 
+Layout wrappers:
+
+- `Page`
+- `Layout`
+
 Rules enforced:
 
-- No AI-generated CSS.
-- No inline style generation by the AI.
-- No dynamic external component creation.
-- Code validator blocks unknown components and dangerous tokens.
+- No AI-generated CSS
+- No inline style generation by AI
+- No external UI libraries from generated code
+- No new components outside whitelist
+- Prop schemas strictly enforced
+- Generated code shape constrained to `renderGeneratedUI(React, components)`
 
-## Architecture
+Core files:
 
-### Frontend (`/frontend`)
+- `backend/src/core/componentRegistry.js`
+- `backend/src/core/propSchemas.js`
+- `backend/src/core/astTypes.js`
+- `backend/src/validation/propValidator.js`
+- `backend/src/validation/codeValidator.js`
+- `backend/src/validation/componentSchemaValidator.js`
 
-- React + Vite.
-- Route-based UI:
-  - `/chat`
-  - `/code`
-  - `/preview`
-  - `/history`
-  - `/agent`
-- Preview runtime compiles constrained JS function:
-  - `renderGeneratedUI(React, components)`
+## Iteration, Versioning, and Rollback
 
-### Backend (`/backend`)
+- Every successful generation stores a version snapshot with:
+  - intent
+  - mode
+  - plan
+  - UI AST/tree
+  - generated code
+  - explanation
+- Modify mode applies incremental updates to current version.
+- Regenerate mode starts from baseline and re-composes deterministically.
+- Rollback moves active pointer to a previous version.
+- Compare intent returns version metadata for inspection.
 
-- Hono API running on Cloudflare Workers.
-- In-memory session/version store.
-- Agent orchestration via single `runAgent(...)` flow.
-- Input sanitization + code validation + component whitelist enforcement.
+Version store:
 
-## Backend Structure
-
-```text
-/backend/src
-  /agent
-    injectionGuard.js
-    intentClassifier.js
-    planner.js
-    normalizer.js
-    generator.js
-    explainer.js
-    runAgent.js
-
-  /validation
-    propValidator.js
-    codeValidator.js
-
-  /core
-    componentRegistry.js
-    propSchemas.js
-    astTypes.js
-
-  /store
-    versionStore.js
-```
-
-## Orchestration Flow
-
-```text
-User Intent
-  -> [1] Injection Guard
-  -> [2] Intent Classifier
-  -> [3] Planner
-  -> [4] Deterministic Normalizer
-  -> [5] Generator
-  -> [6] Prop Validator
-  -> [7] Code Validator
-  -> [8] Explainer
-  -> Render + Store Version
-```
-
-## Agent Design & Prompt Separation
-
-Prompt templates are separated in:
-
-- `/backend/src/agent/prompts.js`
-
-Pipeline steps are separated in:
-
-- `/backend/src/agent/injectionGuard.js`
-- `/backend/src/agent/intentClassifier.js`
-- `/backend/src/agent/planner.js`
-- `/backend/src/agent/normalizer.js`
-- `/backend/src/agent/generator.js`
-- `/backend/src/agent/explainer.js`
-- `/backend/src/agent/runAgent.js`
-
-## AST Design
-
-All iterative editing operates on a canonical UI AST:
-
-```ts
-type UITree = {
-  version: number
-  root: UINode
-}
-
-type UINode = {
-  id: string
-  component: string
-  props: Record<string, any>
-  children: UINode[]
-}
-```
-
-AST adapters are implemented in `/backend/src/core/astTypes.js` for conversion between canonical `UITree` and render-oriented legacy layout nodes.
-
-## Prop Schema Design
-
-Strict deterministic prop schemas are defined in:
-
-- `/backend/src/core/propSchemas.js`
-
-Validation is enforced by:
-
-- `/backend/src/validation/propValidator.js`
-
-Validation rejects:
-
-- missing required props
-- unknown props
-- invalid prop types
-- nested component misuse
-
-## Versioning
-
-Version snapshots are stored per session and include both code and AST:
-
-- `uiAst` (`UITree`)
-- `uiTree` (render-oriented tree)
-- `code`
-- `plan`
-- `explanation`
-
-Rollback switches active pointer to a previous snapshot version, and compare returns metadata for active/target snapshots.
-
-### LLM behavior
-
-- If `OPENAI_API_KEY` is provided, planner/explainer can use OpenAI.
-- If not, deterministic heuristic fallback is used.
+- `backend/src/store/versionStore.js`
 
 ## Safety & Validation
 
-- Prompt injection filter in `/backend/src/validation/sanitize.js`.
-- Plan validation in `/backend/src/validation/planValidator.js`.
-- Code validation in `/backend/src/validation/codeValidator.js`.
-- Component prop schema validation in `/backend/src/validation/componentSchemaValidator.js`.
-- Frontend preview also validates before evaluation.
+- Prompt injection filtering:
+  - `backend/src/validation/sanitize.js`
+- Plan validation:
+  - `backend/src/validation/planValidator.js`
+- Prop validation:
+  - `backend/src/validation/propValidator.js`
+- Code validation:
+  - `backend/src/validation/codeValidator.js`
+- User-friendly validation feedback:
+  - `backend/src/validation/validationFeedback.js`
 
-Additional API:
-- `POST /api/validate-ast` with `{ "generatedAst": { ... } }` returns:
-  - `{ "valid": boolean, "errors": [{ "component": "", "prop": "", "issue": "" }] }`
-- `POST /api/security-check` with `{ "user_intent": "..." }` returns:
-  - `{ "is_safe": boolean, "violation_reason": "", "safe_intent_summary": "" }`
-- `POST /api/validate-code` with `{ "code": "..." }` returns:
-  - `{ "valid": boolean, "errors": ["..."] }`
-  - Invalid responses also include:
-    - `feedback`: `{ what_went_wrong, rule_violated, how_to_fix, details }`
-    - `feedback_prompt`: validation feedback prompt text
+## LLM Configuration (Gemini Only)
 
-Generation requests are rollback-aware:
-- A pre-planner classifies intent as `modify | rollback | compare` using version history + current AST.
-- `/api/generate` returns `version_intent` in all responses.
-- For compare intent, response includes `comparison` metadata.
+Environment options:
 
-Deterministic enforcement stage:
-- Planner output is normalized before tree application:
-  - random-like fields removed
-  - operation order normalized
-  - prop keys sorted recursively
-  - stable canonical plan shape enforced
-- `/api/generate` includes `deterministic_prompt` for traceability.
+- `GEMINI_API_KEY=<key>`
+- `LLM_MODEL=<model-name>`
+- `LLM_ONLY=true|false`
+
+Behavior:
+
+- If `LLM_ONLY=true`, generation fails when Gemini key/model is invalid.
+- If `LLM_ONLY=false`, heuristic fallback is available.
 
 ## Setup
 
-## 1) Install
+## 1) Install dependencies
 
-Use Node LTS first (recommended: Node 22):
-
-```bash
-nvm use || nvm install
-```
+Recommended Node: LTS (Node 22).
 
 ```bash
 npm install
 ```
 
-## 2) Run locally
+## 2) Local development
 
 ```bash
 npm run dev
 ```
 
 - Frontend: `http://localhost:5173`
-- Backend (Workers local): `http://127.0.0.1:8787`
+- Backend: `http://127.0.0.1:8787`
 
-Optional backend env vars (for real LLM):
+### Local Gemini example (`backend/.dev.vars`)
 
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL` (default: `gpt-4.1-mini`)
-- `ALLOWED_ORIGIN` (default `*`)
+```env
+GEMINI_API_KEY=your_key
+LLM_MODEL=gemini-2.5-flash
+LLM_ONLY=true
+```
 
-## Deployment
-
-### Backend (Cloudflare Workers + Hono)
+## 3) Deploy Backend (Cloudflare Workers)
 
 ```bash
 cd backend
 npm run deploy
 ```
 
-### Frontend (Vercel/Netlify/Cloudflare Pages)
+Set secrets:
 
-Set env var during frontend deploy:
+```bash
+npx wrangler secret put GEMINI_API_KEY
+```
 
-- `VITE_API_BASE_URL=https://<your-worker-domain>`
+## 4) Deploy Frontend
+
+Deploy on Cloudflare Pages / Vercel / Netlify.
+
+Required frontend env:
+
+- `VITE_API_BASE_URL=https://<worker-domain>`
+
+## Evaluation Criteria Mapping
+
+### Agent Design
+
+- Multi-step agent pipeline is explicit and separated by module.
+- Prompt templates are visible and versionable.
+
+### Determinism
+
+- Fixed component registry
+- Strict prop schemas
+- Deterministic plan normalization and operation ordering
+
+### Iteration
+
+- `modify` mode applies incremental targeted updates
+- `regenerate` mode resets to baseline then recomposes
+- rollback/version history supported
+
+### Explainability
+
+- Explainer step returns plain-language rationale
+- Edit-awareness explainer path for incremental changes
+
+### Engineering Judgment
+
+- Tradeoff: strict safety + deterministic constraints over free-form rendering
+- Provider abstraction added while preserving deterministic guards
 
 ## Known Limitations
 
-- Storage is in-memory (sessions reset on worker restart).
-- Generated code is constrained JS (`React.createElement`) rather than JSX.
-- Compare currently returns metadata; no visual side-by-side diff UI yet.
-- Schema depth is fixed to current component system.
+- In-memory store (non-durable across worker restarts)
+- No visual diff UI yet (compare is metadata-based)
+- LLM output quality varies by provider/model quotas
+- Deterministic component set is intentionally narrow
+- Table/chart data synthesis is heuristic when LLM omits details
 
-## What I Would Improve With More Time
+## What I’d Improve With More Time
 
-- Durable storage (D1/KV) and replayable generations.
-- Token streaming + planner/generator/explainer step streaming UI.
-- AST-level code patching for stronger incremental edit guarantees.
-- Side-by-side diff view and operation timeline.
-- Stronger static analysis and schema-level component prop validation.
+- Durable persistence (D1/KV) and replayable generation logs
+- Structured patch-diff UI for version-to-version edits
+- Stronger AST-level planner contract and repair loop
+- Better telemetry and per-step observability dashboards
+- Streaming responses for planner/generator/explainer stages
+
+## Explicitly Not Required (Per Assignment)
+
+Not implemented intentionally:
+
+- Authentication
+- Multi-user support
+- Pixel-perfect design system polish
+- Full accessibility audit
+
+## Demo Video (Optional but Recommended)
+
+Record 5–7 minutes showing:
+
+1. Initial generation from plain-English intent
+2. Modify existing UI (incremental, no full rewrite)
+3. Regenerate behavior
+4. Explanation output
+5. Rollback/version change

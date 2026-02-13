@@ -6,8 +6,7 @@ export async function classifyIntent({
   currentAst,
   currentVersionId,
   apiKey,
-  model,
-  provider = "openai"
+  model
 }) {
   const result = await runVersionIntentPlanner({
     userIntent,
@@ -15,8 +14,7 @@ export async function classifyIntent({
     currentAst,
     currentVersionId,
     apiKey,
-    model,
-    provider
+    model
   });
 
   return {

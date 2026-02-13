@@ -62,10 +62,8 @@ app.post("/api/generate", async (c) => {
     const mode = body.mode === "modify" || body.mode === "regenerate" ? body.mode : "generate";
     const llmOnlyEnv = String(c.env.LLM_ONLY || "true").toLowerCase();
     const llmOnly = llmOnlyEnv !== "false";
-    const provider = String(c.env.LLM_PROVIDER || "openai").toLowerCase();
-    const apiKey = provider === "gemini" ? c.env.GEMINI_API_KEY : c.env.OPENAI_API_KEY;
-    const model =
-      c.env.LLM_MODEL || c.env.OPENAI_MODEL || (provider === "gemini" ? "gemini-1.5-flash" : "gpt-4.1-mini");
+    const apiKey = c.env.GEMINI_API_KEY;
+    const model = c.env.LLM_MODEL || "gemini-2.5-flash";
 
     const result = await runAgent({
       userMessage: body.intent || "",
@@ -73,7 +71,6 @@ app.post("/api/generate", async (c) => {
       sessionId: body.sessionId || "",
       apiKey,
       model,
-      provider,
       llmOnly
     });
 

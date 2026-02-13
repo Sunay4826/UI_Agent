@@ -85,14 +85,13 @@ export async function runPlanner({
   previousTree,
   apiKey,
   model,
-  provider = "openai",
   enforceLlm = false
 }) {
   const prompt = plannerPrompt({ intent, mode, previousPlan, previousCode, previousTree });
 
   let llmFailureReason = "";
   try {
-    const llmPlan = await llmJson({ prompt, apiKey, model, provider });
+    const llmPlan = await llmJson({ prompt, apiKey, model });
     if (llmPlan) {
       const normalizedPlan =
         mode === "modify" || mode === "regenerate" ? normalizeModifyPlan(llmPlan) : llmPlan;
