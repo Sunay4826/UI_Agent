@@ -4,3 +4,6 @@ compatibility_date = "2025-01-15"
 
 [vars]
 ALLOWED_ORIGIN = "*"
+LLM_MODEL = "gemini-2.5-flash"
+LLM_ONLY = "true"
+
