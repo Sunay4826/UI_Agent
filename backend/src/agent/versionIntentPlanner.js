@@ -92,7 +92,8 @@ export async function runVersionIntentPlanner({
   currentAst,
   currentVersionId,
   apiKey,
-  model
+  model,
+  provider = "openai"
 }) {
   const fallback = heuristicVersionIntent({ userIntent, versionList, currentAst, currentVersionId });
 
@@ -102,7 +103,7 @@ export async function runVersionIntentPlanner({
     userIntent
   });
 
-  const llmOutput = await llmJson({ prompt, apiKey, model });
+  const llmOutput = await llmJson({ prompt, apiKey, model, provider });
   const result = normalizeResult(llmOutput, fallback, versionList);
 
   return {

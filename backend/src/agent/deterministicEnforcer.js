@@ -91,7 +91,12 @@ function normalizeModifyPlanShape(plan) {
     (Array.isArray(items) ? items : [])
       .map((item) => ({
         id: typeof item?.id === "string" ? item.id : null,
-        target: typeof item?.target === "string" ? item.target : "",
+        target:
+          typeof item?.target === "string" && item.target.trim().length > 0
+            ? item.target
+            : typeof item?.id === "string" && item.id.trim().length > 0
+              ? `id:${item.id}`
+              : "",
         component: typeof item?.component === "string" ? item.component : null,
         props: deepSortValue(item?.props && typeof item.props === "object" ? item.props : {}),
         position:

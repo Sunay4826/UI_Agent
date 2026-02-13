@@ -84,19 +84,33 @@ export async function runPlanner({
   previousCode,
   previousTree,
   apiKey,
-  model
+  model,
+  provider = "openai",
+  enforceLlm = false
 }) {
   const prompt = plannerPrompt({ intent, mode, previousPlan, previousCode, previousTree });
 
-  const llmPlan = await llmJson({ prompt, apiKey, model });
-  if (llmPlan) {
-    const normalizedPlan =
-      mode === "modify" || mode === "regenerate" ? normalizeModifyPlan(llmPlan) : llmPlan;
+  let llmFailureReason = "";
+  try {
+    const llmPlan = await llmJson({ prompt, apiKey, model, provider });
+    if (llmPlan) {
+      const normalizedPlan =
+        mode === "modify" || mode === "regenerate" ? normalizeModifyPlan(llmPlan) : llmPlan;
 
-    const valid = validatePlan(normalizedPlan);
-    if (valid.valid) {
-      return { plan: normalizedPlan, source: "llm" };
+      const valid = validatePlan(normalizedPlan);
+      if (valid.valid) {
+        return { plan: normalizedPlan, source: "llm" };
+      }
+      llmFailureReason = "LLM plan failed deterministic schema validation.";
+    } else {
+      llmFailureReason = "LLM did not return a valid JSON plan.";
     }
+  } catch (error) {
+    llmFailureReason = error instanceof Error ? error.message : "LLM planner request failed.";
+  }
+
+  if (enforceLlm) {
+    throw new Error(llmFailureReason || "LLM planner failed and fallback is disabled.");
   }
 
   const fallbackPlan = buildHeuristicPlan({ intent, mode });

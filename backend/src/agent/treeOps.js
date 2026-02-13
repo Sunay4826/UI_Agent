@@ -1,4 +1,6 @@
 import { DEFAULT_TREE } from "../constants/componentRegistry.js";
+import { componentRegistry, layoutComponents } from "../core/componentRegistry.js";
+import { propSchemas } from "../core/propSchemas.js";
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -71,14 +73,13 @@ function inferComponentList(intent, { allowFallback } = { allowFallback: true })
 }
 
 function defaultPropsFor(component, intent) {
-  const label = intent.slice(0, 80);
   switch (component) {
     case "Button":
       return { label: "Save Changes", variant: "primary" };
     case "Card":
       return {
         title: "New Section",
-        body: label,
+        body: "N/A",
         footer: "Generated from latest instruction"
       };
     case "Input":
@@ -111,6 +112,158 @@ function defaultPropsFor(component, intent) {
     default:
       return {};
   }
+}
+
+function isAllowedVariant(value) {
+  return value === "primary" || value === "secondary";
+}
+
+function toStringArray(value, fallback = []) {
+  if (!Array.isArray(value)) return fallback;
+  return value
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (typeof item === "number") return String(item);
+      if (item && typeof item === "object") {
+        return String(item.label ?? item.name ?? item.title ?? item.key ?? "").trim();
+      }
+      return "";
+    })
+    .filter(Boolean);
+}
+
+function toNumberArray(value, fallback = []) {
+  if (!Array.isArray(value)) return fallback;
+  const out = value
+    .map((item) => (typeof item === "number" ? item : Number(item)))
+    .filter((item) => Number.isFinite(item));
+  return out.length > 0 ? out : fallback;
+}
+
+function toRows(value, columns, fallback = []) {
+  if (!Array.isArray(value)) return fallback;
+  if (value.length === 0) return [];
+
+  const normalizedColumns = toStringArray(columns, []);
+
+  if (Array.isArray(value[0])) {
+    return value.map((row) => (Array.isArray(row) ? row.map((cell) => String(cell ?? "")) : []));
+  }
+
+  if (typeof value[0] === "object" && value[0] !== null) {
+    const cols =
+      normalizedColumns.length > 0
+        ? normalizedColumns
+        : Object.keys(value[0]).map((key) => String(key ?? "").trim()).filter(Boolean);
+
+    const normalizedRows = value.map((row) => {
+      const source = row && typeof row === "object" ? row : {};
+      return cols.map((col) => {
+        if (col in source) return String(source[col] ?? "");
+
+        const hitKey = Object.keys(source).find((key) => String(key).toLowerCase() === col.toLowerCase());
+        if (hitKey) return String(source[hitKey] ?? "");
+
+        return "";
+      });
+    });
+    return normalizedRows;
+  }
+
+  return fallback;
+}
+
+function sanitizeComponentProps(component, rawProps, intent, existingProps = null) {
+  const incoming = rawProps && typeof rawProps === "object" ? { ...rawProps } : {};
+  const defaults = defaultPropsFor(component, intent);
+  const base = existingProps && typeof existingProps === "object" ? { ...existingProps } : {};
+  const out = { ...defaults, ...base };
+
+  if (component === "Button") {
+    if (!incoming.variant && incoming.primary === true) incoming.variant = "primary";
+    if (!incoming.variant && incoming.secondary === true) incoming.variant = "secondary";
+    if (!isAllowedVariant(incoming.variant)) incoming.variant = out.variant || "primary";
+    if (typeof incoming.label === "string" && incoming.label.trim()) out.label = incoming.label.trim();
+    out.variant = incoming.variant || out.variant || "primary";
+  }
+
+  if (component === "Card") {
+    if (typeof incoming.title === "string" && incoming.title.trim()) out.title = incoming.title.trim();
+    if (typeof incoming.body === "string" && incoming.body.trim()) out.body = incoming.body.trim();
+    if (typeof incoming.footer === "string") out.footer = incoming.footer;
+  }
+
+  if (component === "Input") {
+    if (typeof incoming.label === "string" && incoming.label.trim()) out.label = incoming.label.trim();
+    if (typeof incoming.placeholder === "string" && incoming.placeholder.trim()) out.placeholder = incoming.placeholder.trim();
+    if (typeof incoming.value === "string") out.value = incoming.value;
+  }
+
+  if (component === "Navbar") {
+    if (typeof incoming.title === "string" && incoming.title.trim()) out.title = incoming.title.trim();
+    const links = toStringArray(incoming.links || incoming.items || incoming.navItems, out.links || []);
+    out.links = links.length > 0 ? links : out.links || ["Home", "Reports", "Settings"];
+  }
+
+  if (component === "Sidebar") {
+    if (typeof incoming.title === "string" && incoming.title.trim()) out.title = incoming.title.trim();
+    const items = toStringArray(incoming.items || incoming.links, out.items || []);
+    out.items = items.length > 0 ? items : out.items || ["Overview", "Usage", "Settings"];
+  }
+
+  if (component === "Chart") {
+    if (typeof incoming.title === "string" && incoming.title.trim()) out.title = incoming.title.trim();
+    let points = toNumberArray(incoming.points, []);
+    let labels = toStringArray(incoming.labels, []);
+
+    if ((points.length === 0 || labels.length === 0) && Array.isArray(incoming.data)) {
+      const rows = incoming.data;
+      if (rows.length > 0 && typeof rows[0] === "object" && rows[0] !== null) {
+        labels = rows.map((row) => String(row.label ?? row.name ?? "").trim()).filter(Boolean);
+        points = rows
+          .map((row) => (typeof row.value === "number" ? row.value : Number(row.value)))
+          .filter((n) => Number.isFinite(n));
+      }
+    }
+
+    if (points.length === 0) points = toNumberArray(out.points, [12, 18, 11, 24, 16, 28]);
+    if (labels.length === 0) labels = toStringArray(out.labels, ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
+    if (points.length !== labels.length) {
+      const len = Math.min(points.length, labels.length);
+      points = points.slice(0, len);
+      labels = labels.slice(0, len);
+    }
+
+    out.points = points;
+    out.labels = labels;
+  }
+
+  if (component === "Table") {
+    const columns = toStringArray(incoming.columns, toStringArray(out.columns, []));
+    let rows = toRows(incoming.rows, columns, []);
+    if (rows.length === 0 && Array.isArray(incoming.data)) {
+      rows = toRows(incoming.data, columns, []);
+    }
+
+    out.columns = columns.length > 0 ? columns : toStringArray(out.columns, ["Name", "Status", "Owner"]);
+    out.rows = rows.length > 0 ? rows : toRows(out.rows, out.columns, buildRowsForColumns(out.columns));
+  }
+
+  if (component === "Modal") {
+    if (typeof incoming.title === "string" && incoming.title.trim()) out.title = incoming.title.trim();
+    if (typeof incoming.body === "string" && incoming.body.trim()) out.body = incoming.body.trim();
+    if (typeof incoming.open === "boolean") out.open = incoming.open;
+    if (typeof incoming.confirmLabel === "string" && incoming.confirmLabel.trim()) out.confirmLabel = incoming.confirmLabel.trim();
+  }
+
+  const schema = propSchemas[component];
+  if (!schema) return out;
+  const allowed = new Set([...(schema.required || []), ...(schema.optional || [])]);
+  const filtered = {};
+  for (const key of allowed) {
+    if (key in out) filtered[key] = out[key];
+  }
+  return filtered;
 }
 
 function isProjectDashboardIntent(intent) {
@@ -569,35 +722,78 @@ function resolveContentIndex(content, target, componentHint) {
   return hits[oneBased - 1] ?? -1;
 }
 
+function mentionsSidebarTitleUpdate(intent) {
+  const text = String(intent || "").toLowerCase();
+  return text.includes("sidebar title");
+}
+
+function isAllowedModifyTarget(target) {
+  if (target === "navbar" || target === "sidebar") return true;
+  if (/^content:(card|button):/i.test(target)) return true;
+  if (/^id:/i.test(target)) return true;
+  return false;
+}
+
 export function applyPlanToTree({ previousTree, plan, mode, intent }) {
   const base = mode === "generate" || !previousTree ? clone(DEFAULT_TREE) : clone(previousTree);
   const content = getContentNode(base);
   if (!content) return base;
 
   for (const op of plan.operations) {
-    const target = typeof op.target === "string" ? op.target : "content";
+    const opComponent = op.component || inferComponent(intent);
+    let target = typeof op.target === "string" ? op.target : "content";
+    // Deterministic single-slot components must not be appended into content.
+    if (opComponent === "Navbar") target = "navbar";
+    if (opComponent === "Sidebar") target = "sidebar";
+    if (mode === "modify") {
+      const lowerComponent = String(opComponent || "").toLowerCase();
+      if ((target === "content" || target === "content:last" || target === "content:first") && lowerComponent) {
+        if (lowerComponent === "card" || lowerComponent === "button" || lowerComponent === "table" || lowerComponent === "chart") {
+          target = `content:${lowerComponent}:last`;
+        }
+      }
+    }
     const idTarget = target.startsWith("id:") ? target.slice(3) : "";
 
+    if (mode === "modify") {
+      if (op.type !== "update") {
+        continue;
+      }
+      if (!isAllowedModifyTarget(target)) {
+        continue;
+      }
+      if (idTarget) {
+        const located = findNodeById(base, idTarget);
+        const nodeType = located?.node?.type || "";
+        if (!nodeType || layoutComponents.includes(nodeType) || !componentRegistry.includes(nodeType)) {
+          continue;
+        }
+      }
+    }
+
     if (target === "navbar" && base.children?.[0]) {
+      const existing = base.children[0]?.props || {};
+      const sanitized = sanitizeComponentProps("Navbar", op.props || {}, intent, existing);
       base.children[0] = {
         ...(base.children[0] || {}),
         type: "Navbar",
-        props: {
-          ...(base.children[0].props || {}),
-          ...(op.props || {})
-        }
+        props: sanitized
       };
       continue;
     }
 
     if (target === "sidebar" && base.children?.[1]?.children?.[0]) {
+      const existing = base.children[1].children[0]?.props || {};
+      const requested = { ...(op.props || {}) };
+      // In modify mode, avoid accidental sidebar title rewrites unless explicitly requested.
+      if (mode === "modify" && !mentionsSidebarTitleUpdate(intent)) {
+        delete requested.title;
+      }
+      const sanitized = sanitizeComponentProps("Sidebar", requested, intent, existing);
       base.children[1].children[0] = {
         ...(base.children[1].children[0] || {}),
         type: "Sidebar",
-        props: {
-          ...(base.children[1].children[0].props || {}),
-          ...(op.props || {})
-        }
+        props: sanitized
       };
       continue;
     }
@@ -617,10 +813,11 @@ export function applyPlanToTree({ previousTree, plan, mode, intent }) {
       continue;
     }
 
+    const nodeComponent = opComponent;
     const componentNode = {
       id: op.id || nextNodeId(base, (op.component || inferComponent(intent)).toLowerCase()),
-      type: op.component || inferComponent(intent),
-      props: op.props || defaultPropsFor(op.component || inferComponent(intent), intent)
+      type: nodeComponent,
+      props: sanitizeComponentProps(nodeComponent, op.props || {}, intent)
     };
 
     if (op.type === "add") {
@@ -669,6 +866,16 @@ export function applyPlanToTree({ previousTree, plan, mode, intent }) {
         content.children.push(componentNode);
       } else {
         const resolvedIdx = resolveContentIndex(content, target, componentNode.type);
+        // If a typed content target cannot be resolved (e.g. content:card:3 with only one card),
+        // skip instead of overwriting an unrelated node.
+        if (
+          resolvedIdx < 0 &&
+          /^content:[a-z]+:(first|last|\d+)$/i.test(target) &&
+          target !== "content:first" &&
+          target !== "content:last"
+        ) {
+          continue;
+        }
         const idx = resolvedIdx >= 0 ? resolvedIdx : target === "content:first" ? 0 : content.children.length - 1;
         const prevType = content.children[idx].type;
         const nextType = componentNode.type;

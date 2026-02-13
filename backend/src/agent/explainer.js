@@ -78,7 +78,8 @@ export async function runExplainer({
   previousAst,
   generatedAst,
   apiKey,
-  model
+  model,
+  provider = "openai"
 }) {
   const editAware = Boolean(previousAst) && (mode === "modify" || mode === "regenerate");
   const prompt = editAware
@@ -92,7 +93,7 @@ export async function runExplainer({
         plannerOutput: plan,
         generatedAst
       });
-  const llmExplanation = await llmText({ prompt, apiKey, model });
+  const llmExplanation = await llmText({ prompt, apiKey, model, provider });
 
   if (llmExplanation && llmExplanation.trim().length > 0) {
     return llmExplanation;

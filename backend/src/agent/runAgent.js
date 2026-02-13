@@ -36,7 +36,7 @@ function buildError(status, message, errors, extra = {}) {
   };
 }
 
-export async function runAgent({ userMessage, mode, sessionId, apiKey, model }) {
+export async function runAgent({ userMessage, mode, sessionId, apiKey, model, provider = "openai", llmOnly = false }) {
   const guard = runInjectionGuard(userMessage || "");
   const effectiveIntent = (guard.safe_intent_summary || "").trim();
   const requestedMode =
@@ -60,7 +60,8 @@ export async function runAgent({ userMessage, mode, sessionId, apiKey, model }) 
     currentAst: previousAst,
     currentVersionId: currentVersion?.id || "",
     apiKey,
-    model
+    model,
+    provider
   });
 
   // User action buttons should be authoritative.
@@ -155,16 +156,37 @@ export async function runAgent({ userMessage, mode, sessionId, apiKey, model }) 
   const previousLegacyTree = createLegacyFromUITree(previousAst);
   const plannerMode = requestedMode === "regenerate" ? "generate" : requestedMode;
   const plannerPreviousTree = requestedMode === "regenerate" ? null : previousLegacyTree;
+  const hasApiKey = Boolean(apiKey && String(apiKey).trim());
+  const enforceLlm = Boolean(llmOnly) || hasApiKey;
 
-  const planner = await runPlanner({
-    intent: effectiveIntent,
-    mode: plannerMode,
-    previousPlan: currentVersion?.plan || null,
-    previousCode: currentVersion?.code || null,
-    previousTree: plannerPreviousTree,
-    apiKey,
-    model
-  });
+  if (enforceLlm && !hasApiKey) {
+    const requiredKeyName = String(provider || "openai").toLowerCase() === "gemini" ? "GEMINI_API_KEY" : "OPENAI_API_KEY";
+    return buildError(500, "LLM configuration missing.", [`${requiredKeyName} is required in LLM-only mode.`], {
+      version_intent: intentInfo,
+      llm_required: true
+    });
+  }
+
+  let planner;
+  try {
+    planner = await runPlanner({
+      intent: effectiveIntent,
+      mode: plannerMode,
+      previousPlan: currentVersion?.plan || null,
+      previousCode: currentVersion?.code || null,
+      previousTree: plannerPreviousTree,
+      apiKey,
+      model,
+      provider,
+      enforceLlm
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "LLM planner failed.";
+    return buildError(502, "LLM planning failed.", [reason], {
+      version_intent: intentInfo,
+      llm_required: enforceLlm
+    });
+  }
 
   const normalized = normalizePlan(planner.plan);
 
@@ -206,7 +228,8 @@ export async function runAgent({ userMessage, mode, sessionId, apiKey, model }) 
     previousAst: previousAst.root,
     generatedAst: nextAst.root,
     apiKey,
-    model
+    model,
+    provider
   });
 
   const savedVersion = saveVersion({
