@@ -5,16 +5,15 @@ import { createSession, generateUI, rollback, updateCode, validateCode } from ".
 import { defaultCode } from "./lib/defaultCode";
 import { renderPreviewElement } from "./lib/previewRuntime";
 
-function AppFrame({ sessionId, loading, status, children }) {
+function AppFrame({ sessionId, status, children }) {
   return (
     <div className="shell">
       <header className="topbar">
         <div>
-          <h1>Ryze UI Agent Studio</h1>
+          <h1>UI Agent Studio</h1>
           <p>Deterministic components. Multi-step agent. Reproducible UI code.</p>
         </div>
         <div className="topbar-meta">
-          <span>{loading ? "Running..." : "Idle"}</span>
           <strong>{sessionId ? `Session ${sessionId.slice(0, 14)}` : "Session booting"}</strong>
         </div>
       </header>
@@ -259,7 +258,7 @@ export default function App() {
   }
 
   return (
-    <AppFrame sessionId={sessionId} loading={loading} status={status}>
+    <AppFrame sessionId={sessionId} status={status}>
       <Routes>
         <Route
           path="/chat"

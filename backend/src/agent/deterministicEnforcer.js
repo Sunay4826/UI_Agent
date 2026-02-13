@@ -56,11 +56,10 @@ function cleanOperation(op) {
 function operationSortKey(op) {
   const typePriority = TYPE_PRIORITY[op.type] ?? 9;
   const targetPriority = TARGET_PRIORITY[op.target] ?? 9;
-  const component = op.component || "";
-  const id = op.id || "";
   const position = op.position || "append";
-
-  return [typePriority, targetPriority, component, id, position, JSON.stringify(op.props || {})].join("|");
+  // Keep original insertion order for operations within the same stage/target bucket.
+  // This preserves user-intended layout order (e.g., KPI cards sequence).
+  return [typePriority, targetPriority, position].join("|");
 }
 
 function stableSortOperations(operations) {
