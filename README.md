@@ -253,21 +253,4 @@ Required frontend env:
 - Better telemetry and per-step observability dashboards
 - Streaming responses for planner/generator/explainer stages
 
-## Explicitly Not Required (Per Assignment)
 
-Not implemented intentionally:
-
-- Authentication
-- Multi-user support
-- Pixel-perfect design system polish
-- Full accessibility audit
-
-## Demo Video (Optional but Recommended)
-
-Record 5–7 minutes showing:
-
-1. Initial generation from plain-English intent
-2. Modify existing UI (incremental, no full rewrite)
-3. Regenerate behavior
-4. Explanation output
-5. Rollback/version change
